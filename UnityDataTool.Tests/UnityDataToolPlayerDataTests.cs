@@ -1,0 +1,234 @@
+using System;
+using System.IO;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Microsoft.Data.Sqlite;
+using NUnit.Framework;
+using UnityDataTools.TestCommon;
+
+namespace UnityDataTools.UnityDataTool.Tests;
+
+#pragma warning disable NUnit2005, NUnit2006
+
+public class UnityDataToolPlayerDataTests : PlayerDataTestFixture
+{
+    private string m_TestOutputFolder;
+
+    public UnityDataToolPlayerDataTests(Context context) : base(context)
+    {
+    }
+
+    [OneTimeSetUp]
+    public void OneTimeSetup()
+    {
+        m_TestOutputFolder = Path.Combine(TestContext.CurrentContext.TestDirectory, "test_folder");
+        Directory.CreateDirectory(m_TestOutputFolder);
+        Directory.SetCurrentDirectory(m_TestOutputFolder);
+    }
+
+    [TearDown]
+    public void Teardown()
+    {
+        SqliteConnection.ClearAllPools();
+
+        foreach (var file in new DirectoryInfo(m_TestOutputFolder).EnumerateFiles())
+        {
+            file.Delete();
+        }
+    }
+
+    [Test]
+    public async Task Analyze_PlayerData_DatabaseCorrect()
+    {
+        var databasePath = SQLTestHelper.GetDatabasePath(m_TestOutputFolder);
+        var analyzePath = Path.Combine(Context.UnityDataFolder);
+
+        Assert.AreEqual(0, await Program.Main(new string[] { "analyze", analyzePath, "-p", "*." }));
+        using var db = SQLTestHelper.OpenDatabase(databasePath);
+
+        using var cmd = db.CreateCommand();
+
+        cmd.CommandText =
+            @"SELECT
+                (SELECT COUNT(*) FROM archives),
+                (SELECT COUNT(*) FROM assetbundle_assets),
+                (SELECT COUNT(*) FROM objects),
+                (SELECT COUNT(*) FROM refs),
+                -- Analyzed files only; serialized_files also holds dangling-ref target files (issue #85).
+                (SELECT COUNT(*) FROM serialized_files WHERE id IN (SELECT serialized_file FROM objects))";
+
+        using var reader = cmd.ExecuteReader();
+
+        reader.Read();
+
+        Assert.AreEqual(0, reader.GetInt32(0));
+        Assert.AreEqual(0, reader.GetInt32(1));
+        Assert.Greater(reader.GetInt32(2), 0);
+        Assert.Greater(reader.GetInt32(3), 0);
+        Assert.AreEqual(1, reader.GetInt32(4));
+    }
+
+    [Test]
+    public async Task Analyze_PlayerDataPreloadDependencies_ObjectResolvesToRealObject()
+    {
+        // Regression test for issue #81 (player-build case): a player build's PreloadData
+        // dependencies were all attributed to object id -1. They must instead hang off a real
+        // object (the PreloadData object itself, since a player build has no scene object).
+        // PlayerWithTypeTrees exercises this - it has PreloadData in its sharedassetsN.assets and
+        // in globalgamemanagers.assets.
+        var analyzePath = Path.Combine(TestContext.CurrentContext.TestDirectory, "Data", "PlayerWithTypeTrees");
+        var databasePath = SQLTestHelper.GetDatabasePath(m_TestOutputFolder);
+
+        Assert.AreEqual(0, await Program.Main(new string[] { "analyze", analyzePath, "-o", databasePath }));
+        using var db = SQLTestHelper.OpenDatabase(databasePath);
+
+        // The build has PreloadData objects, so there must be rows to validate.
+        Assert.Greater(SQLTestHelper.QueryInt(db, "SELECT COUNT(*) FROM preload_dependencies"), 0);
+
+        // Every row's 'object' must be a real, tracked object: never -1, never a dangling id.
+        // (The 'dependency' side is intentionally allowed to dangle, e.g. references into
+        // "unity default resources", which is not analyzed - see analyzer.md.)
+        SQLTestHelper.AssertQueryInt(db,
+            "SELECT COUNT(*) FROM preload_dependencies WHERE object = -1",
+            0, "preload_dependencies.object should never be -1 (issue #81)");
+        SQLTestHelper.AssertQueryInt(db,
+            "SELECT COUNT(*) FROM preload_dependencies d LEFT JOIN objects o ON o.id = d.object WHERE o.id IS NULL",
+            0, "every preload_dependencies.object should resolve to an objects row");
+    }
+
+    [Test]
+    public async Task Analyze_PlayerData_RecordsDanglingRefsToDefaultResources()
+    {
+        // Issue #85: a player build references objects in "unity default resources" (shipped without
+        // TypeTrees, never analyzed). Those references must be recorded in dangling_refs instead of
+        // leaving unexplained gaps in the object id space.
+        var analyzePath = Path.Combine(TestContext.CurrentContext.TestDirectory, "Data", "PlayerWithTypeTrees");
+        var databasePath = SQLTestHelper.GetDatabasePath(m_TestOutputFolder);
+
+        Assert.AreEqual(0, await Program.Main(new string[] { "analyze", analyzePath, "-o", databasePath }));
+        using var db = SQLTestHelper.OpenDatabase(databasePath);
+
+        Assert.Greater(SQLTestHelper.QueryInt(db, "SELECT COUNT(*) FROM dangling_refs"), 0,
+            "the player build should have dangling references (e.g. into unity default resources)");
+
+        // "unity default resources" is recorded as a serialized_files row and is a dangling target.
+        Assert.Greater(SQLTestHelper.QueryInt(db,
+            @"SELECT COUNT(*) FROM dangling_refs d
+              INNER JOIN serialized_files sf ON sf.id = d.serialized_file
+              WHERE sf.name = 'unity default resources'"),
+            0, "expected dangling references into 'unity default resources'");
+
+        // The dangling references are visible in the view, with real analyzed source files.
+        Assert.Greater(SQLTestHelper.QueryInt(db, "SELECT COUNT(*) FROM dangling_refs_view"), 0,
+            "dangling references should be visible in dangling_refs_view");
+
+        // Every referenced object resolves to exactly one of objects/dangling_refs.
+        SQLTestHelper.AssertQueryInt(db,
+            @"SELECT COUNT(*) FROM refs r
+              LEFT JOIN objects o       ON o.id = r.referenced_object
+              LEFT JOIN dangling_refs d ON d.id = r.referenced_object
+              WHERE o.id IS NULL AND d.id IS NULL",
+            0, "every refs.referenced_object should resolve to an objects or dangling_refs row");
+        SQLTestHelper.AssertQueryInt(db,
+            "SELECT COUNT(*) FROM dangling_refs d INNER JOIN objects o ON o.id = d.id",
+            0, "an id must not be in both objects and dangling_refs");
+        // LFID 0 is never a real object; a dangling row with object_id 0 means a null PPtr (e.g. a
+        // null m_GameObject) was mistakenly resolved to a phantom (file, 0) id.
+        SQLTestHelper.AssertQueryInt(db,
+            "SELECT COUNT(*) FROM dangling_refs WHERE object_id = 0",
+            0, "dangling_refs should not contain phantom object_id 0 entries");
+    }
+
+    [Test]
+    public async Task DumpText_PlayerData_TextFileCreatedCorrectly()
+    {
+        var path = Path.Combine(Context.UnityDataFolder, "level0");
+        var outputFile = Path.Combine(m_TestOutputFolder, "level0.txt");
+
+        Assert.AreEqual(0, await Program.Main(new string[] { "dump", path }));
+        Assert.IsTrue(File.Exists(outputFile));
+
+        var content = File.ReadAllText(outputFile);
+        var expected = File.ReadAllText(Path.Combine(Context.ExpectedDataFolder, "level0.txt"));
+
+        // Normalize  line endings.
+        content = Regex.Replace(content, @"\r\n|\n\r|\r", "\n");
+        expected = Regex.Replace(expected, @"\r\n|\n\r|\r", "\n");
+
+        Assert.AreEqual(expected, content);
+    }
+
+    [Test]
+    public async Task Analyze_PlayerDataNoTypeTree_ReportsFailureCorrectly()
+    {
+        // Test for issue #48: files that cannot be processed must not be counted as successes.
+        // Files without TypeTrees are detected up front and reported in their own summary category
+        // (rather than the generic failure count) so they can be told apart in a large run.
+        var testDataFolder = Path.Combine(TestContext.CurrentContext.TestDirectory, "Data", "PlayerNoTypeTree");
+
+        using var swOut = new StringWriter();
+        using var swErr = new StringWriter();
+        var currentOut = Console.Out;
+        var currentErr = Console.Error;
+        try
+        {
+            Console.SetOut(swOut);
+            Console.SetError(swErr);
+
+            // Nothing could be analyzed, so the run fails (issue #115). A run with both successes
+            // and failures still returns 0.
+            Assert.AreEqual(1, await Program.Main(new string[] { "analyze", Path.Combine(testDataFolder, "level0") }));
+
+            var output = swOut.ToString() + swErr.ToString();
+
+            // Check that the filename appears in the error output
+            Assert.That(output, Does.Contain("level0"), "Expected 'level0' to appear in error output");
+
+            // Check that the summary line categorizes the file as missing TypeTrees, not a success.
+            Assert.That(output, Does.Contain("Files without TypeTrees: 1"), "Expected 'Files without TypeTrees: 1' in summary");
+            Assert.That(output, Does.Contain("Successfully processed files: 0"), "Expected 'Successfully processed files: 0' in summary");
+            Assert.That(output, Does.Contain("no files were successfully analyzed"), "Expected an explicit error message");
+            Assert.That(File.Exists(Path.Combine(m_TestOutputFolder, "database.db")), Is.False, "Expected the empty database to be deleted");
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+            Console.SetError(currentErr);
+        }
+    }
+
+    [Test]
+    public async Task Analyze_AssetBundleNoTypeTree_ReportsMissingTypeTreesWithoutCrashing()
+    {
+        // A no-TypeTree SerializedFile inside an archive must be detected up front and skipped
+        // cleanly. Handing it to the native loader otherwise emits misleading version mismatch
+        // errors and can crash the process with an access violation.
+        var bundlePath = Path.Combine(TestContext.CurrentContext.TestDirectory,
+            "Data", "AssetBundleTypeTreeVariations", "AssetBundle-NoTypeTree", "small.bundle");
+
+        using var swOut = new StringWriter();
+        using var swErr = new StringWriter();
+        var currentOut = Console.Out;
+        var currentErr = Console.Error;
+        try
+        {
+            Console.SetOut(swOut);
+            Console.SetError(swErr);
+
+            // The bundle is skipped cleanly, which leaves nothing analyzed: the run fails (issue #115).
+            Assert.AreEqual(1, await Program.Main(new string[] { "analyze", bundlePath }));
+
+            var output = swOut.ToString() + swErr.ToString();
+
+            Assert.That(output, Does.Contain("Skipped (no TypeTrees)"), "Expected the file to be reported as skipped");
+            Assert.That(output, Does.Contain("Files without TypeTrees: 1"), "Expected 'Files without TypeTrees: 1' in summary");
+            Assert.That(output, Does.Contain("Successfully processed files: 0"), "Expected 'Successfully processed files: 0' in summary");
+            Assert.That(output, Does.Contain("no TypeTrees"), "Expected the summary error to name the missing TypeTrees");
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+            Console.SetError(currentErr);
+        }
+    }
+}

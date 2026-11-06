@@ -1,0 +1,29 @@
+{
+    "Version": 2,
+    "BuildContentOptions": [
+        "CleanBuildCache"
+    ],
+    "BuildManifestHash": "e320fc78984f8430afa90a591fd02004",
+    "BuildName": "ContentDirectory",
+    "BuildOptions": [
+        "None"
+    ],
+    "BuildProfilePath": "",
+    "BuildResult": 1,
+    "BuildResultName": "Succeeded",
+    "BuildSessionGUID": "f096bba0b9ce4c44194edd738d64b9df",
+    "BuildStartedAt": "2026-09-21T16:53:11.2245541Z",
+    "BuildType": 3,
+    "BuildTypeName": "ContentDirectory",
+    "ContentSourceBuildSessionGUID": "00000000000000000000000000000000",
+    "OutputPath": "C:/UnitySrc/UnityDataTools/UnityProjects/LeadingEdge/../../TestCommon/Data/LeadingEdgeBuilds/ContentDirectory",
+    "Platform": 19,
+    "PlatformName": "StandaloneWindows64",
+    "ProducerPackage": "",
+    "Subtarget": 2,
+    "SubtargetName": "Player",
+    "TotalErrors": 0,
+    "TotalSizeBytes": 920302,
+    "TotalTimeMs": 11469,
+    "TotalWarnings": 0
+}

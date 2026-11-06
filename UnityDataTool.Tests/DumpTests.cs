@@ -1,0 +1,547 @@
+using System;
+using System.Globalization;
+using System.IO;
+using System.Threading.Tasks;
+using NUnit.Framework;
+
+namespace UnityDataTools.UnityDataTool.Tests;
+
+#pragma warning disable NUnit2005, NUnit2006
+
+public class DumpTests
+{
+    private string m_TestDataFolder;
+    private string m_SerializedFilePath;
+    private string m_ResourceFilePath;
+    private string m_MultiSerializedFileArchivePath;
+    private string m_SceneBundlePath;
+    private string m_NoTypeTreeSerializedFilePath;
+    private string m_NoTypeTreeArchivePath;
+    private string m_SerializationDemoBundlePath;
+    private string m_ContentDirectoryBuildReportPath;
+
+    [OneTimeSetUp]
+    public void OneTimeSetup()
+    {
+        m_TestDataFolder = Path.Combine(TestContext.CurrentContext.TestDirectory, "Data");
+        m_SerializedFilePath = Path.Combine(m_TestDataFolder, "PlayerWithTypeTrees", "level0");
+        m_ResourceFilePath = Path.Combine(m_TestDataFolder, "PlayerWithTypeTrees", "sharedassets0.assets.resS");
+        m_MultiSerializedFileArchivePath = Path.Combine(m_TestDataFolder, "PlayerDataCompressed", "data.unity3d");
+        m_SceneBundlePath = Path.Combine(m_TestDataFolder, "AssetBundles", "2022.1.20f1", "scenes");
+        m_NoTypeTreeSerializedFilePath = Path.Combine(m_TestDataFolder, "PlayerNoTypeTree", "level0");
+        m_NoTypeTreeArchivePath = Path.Combine(m_TestDataFolder, "AssetBundleTypeTreeVariations", "AssetBundle-NoTypeTree", "small.bundle");
+        m_SerializationDemoBundlePath = Path.Combine(m_TestDataFolder, "LeadingEdgeBuilds", "AssetBundles", "serializationdemo");
+        m_ContentDirectoryBuildReportPath = Path.Combine(m_TestDataFolder, "LeadingEdgeBuilds", "BuildReport-ContentDirectory", "f096bba0b9ce4c44194edd738d64b9df.buildreport");
+    }
+
+    [Test]
+    public async Task Dump_Stdout_DefaultArgs_ContainsExternalReferences()
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        try
+        {
+            Console.SetOut(sw);
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_SerializedFilePath, "--stdout" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+        }
+
+        var output = sw.ToString();
+        Assert.That(output, Does.Contain("External References"));
+    }
+
+    [Test]
+    public async Task Dump_Stdout_FilterByObjectId_DumpsGameObject()
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        try
+        {
+            Console.SetOut(sw);
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_SerializedFilePath, "--stdout", "-i", "1" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+        }
+
+        var output = sw.ToString();
+        Assert.That(output, Does.Contain("ID: 1 (ClassID: 1) GameObject"));
+        Assert.That(output, Does.Contain("m_Name (string) RefHolder"));
+    }
+
+    [Test]
+    public async Task Dump_Stdout_FilterByObjectId_DumpsRenderSettings()
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        try
+        {
+            Console.SetOut(sw);
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_SerializedFilePath, "--stdout", "-i", "3" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+        }
+
+        var output = sw.ToString();
+        Assert.That(output, Does.Contain("(ClassID: 104)"));
+        Assert.That(output, Does.Contain("m_FogColor (ColorRGBA)"));
+    }
+
+    [Test]
+    public async Task Dump_Stdout_FilterByObjectId_DoesNotIncludeExternalReferences()
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        try
+        {
+            Console.SetOut(sw);
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_SerializedFilePath, "--stdout", "-i", "1" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+        }
+
+        var output = sw.ToString();
+        Assert.That(output, Does.Not.Contain("External References"));
+    }
+
+    [Test]
+    public async Task Dump_Stdout_FilterByType_DoesNotIncludeExternalReferences()
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        try
+        {
+            Console.SetOut(sw);
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_SerializedFilePath, "--stdout", "-t", "RenderSettings" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+        }
+
+        var output = sw.ToString();
+        Assert.That(output, Does.Contain("(ClassID: 104)"));
+        Assert.That(output, Does.Not.Contain("External References"));
+    }
+
+    [Test]
+    public async Task Dump_Stdout_WithOutputPath_ReturnsError()
+    {
+        using var swOut = new StringWriter();
+        using var swErr = new StringWriter();
+        var currentOut = Console.Out;
+        var currentErr = Console.Error;
+        try
+        {
+            Console.SetOut(swOut);
+            Console.SetError(swErr);
+            Assert.AreNotEqual(0, await Program.Main(new string[] { "dump", m_SerializedFilePath, "--stdout", "-o", m_TestDataFolder }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+            Console.SetError(currentErr);
+        }
+
+        Assert.That(swErr.ToString(), Does.Contain("--stdout and -o/--output-path are mutually exclusive."));
+    }
+
+    [Test]
+    public async Task Dump_Stdout_MultipleSerializedFilesArchive_Refused()
+    {
+        using var swOut = new StringWriter();
+        using var swErr = new StringWriter();
+        var currentOut = Console.Out;
+        var currentErr = Console.Error;
+        try
+        {
+            Console.SetOut(swOut);
+            Console.SetError(swErr);
+            Assert.AreNotEqual(0, await Program.Main(new string[] { "dump", m_MultiSerializedFileArchivePath, "--stdout", "-t", "MonoBehaviour" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+            Console.SetError(currentErr);
+        }
+
+        var err = swErr.ToString();
+        Assert.That(err, Does.Contain("The archive contains 5 SerializedFiles. Choose one with --entry"));
+        Assert.That(err, Does.Contain("  Resources/unity_builtin_extra"));
+    }
+
+    [Test]
+    public async Task Dump_Stdout_Entry_DumpsChosenSerializedFile()
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        try
+        {
+            Console.SetOut(sw);
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_SceneBundlePath, "--stdout", "--entry", "BuildPlayer-SampleScene", "-t", "GameObject" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+        }
+
+        Assert.That(sw.ToString(), Does.Contain("(ClassID: 1) GameObject"));
+    }
+
+    [Test]
+    public async Task Dump_Entry_WritesOnlyChosenSerializedFile()
+    {
+        var outputFolder = Path.Combine(TestContext.CurrentContext.TestDirectory, "dump_entry_output");
+        Directory.CreateDirectory(outputFolder);
+        try
+        {
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_SceneBundlePath, "-e", "BuildPlayer-OtherScene.sharedAssets", "-o", outputFolder }));
+
+            var files = Directory.GetFiles(outputFolder);
+            Assert.AreEqual(1, files.Length);
+            Assert.AreEqual("BuildPlayer-OtherScene.sharedAssets.txt", Path.GetFileName(files[0]));
+            Assert.That(File.ReadAllText(files[0]), Does.Contain("External References"));
+        }
+        finally
+        {
+            Directory.Delete(outputFolder, true);
+        }
+    }
+
+    [Test]
+    public async Task Dump_Entry_OnPlainSerializedFile_Fails()
+    {
+        using var swErr = new StringWriter();
+        var currentErr = Console.Error;
+        try
+        {
+            Console.SetError(swErr);
+            Assert.AreNotEqual(0, await Program.Main(new string[] { "dump", m_SerializedFilePath, "--stdout", "-e", "level0" }));
+        }
+        finally
+        {
+            Console.SetError(currentErr);
+        }
+
+        Assert.That(swErr.ToString(), Does.Contain("--entry can only be used with a Unity Archive"));
+    }
+
+    [Test]
+    public async Task Dump_Stdout_FilterByObjectId_NotFound_PrintsNotFoundMessage()
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        try
+        {
+            Console.SetOut(sw);
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_SerializedFilePath, "--stdout", "-i", "99999999" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+        }
+
+        var output = sw.ToString();
+        Assert.That(output, Does.Contain("Object with ID 99999999 not found."));
+    }
+
+    [Test]
+    public async Task Dump_Stdout_InvalidFileType_Fails()
+    {
+        using var swOut = new StringWriter();
+        using var swErr = new StringWriter();
+        var currentOut = Console.Out;
+        var currentErr = Console.Error;
+        try
+        {
+            Console.SetOut(swOut);
+            Console.SetError(swErr);
+            Assert.AreNotEqual(0, await Program.Main(new string[] { "dump", m_ResourceFilePath, "--stdout" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+            Console.SetError(currentErr);
+        }
+
+        Assert.That(swErr.ToString(), Does.Contain("does not appear to be a valid Unity SerializedFile or Unity Archive"));
+    }
+
+    [Test]
+    public async Task Dump_NoTypeTreeSerializedFile_ReportsMissingTypeTreesWithoutCrashing()
+    {
+        using var swOut = new StringWriter();
+        using var swErr = new StringWriter();
+        var currentOut = Console.Out;
+        var currentErr = Console.Error;
+        try
+        {
+            Console.SetOut(swOut);
+            Console.SetError(swErr);
+            Assert.AreNotEqual(0, await Program.Main(new string[] { "dump", m_NoTypeTreeSerializedFilePath, "--stdout" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+            Console.SetError(currentErr);
+        }
+
+        var output = swOut.ToString() + swErr.ToString();
+        Assert.That(output, Does.Contain("has no TypeTrees"), "Expected a clear missing-TypeTrees message");
+        Assert.That(output, Does.Not.Contain("SerializedFileOpenException"), "Should not leak an exception/stack trace");
+    }
+
+    [Test]
+    public async Task Dump_NoTypeTreeArchive_ReportsMissingTypeTreesWithoutCrashing()
+    {
+        using var swOut = new StringWriter();
+        using var swErr = new StringWriter();
+        var currentOut = Console.Out;
+        var currentErr = Console.Error;
+        try
+        {
+            Console.SetOut(swOut);
+            Console.SetError(swErr);
+            Assert.AreNotEqual(0, await Program.Main(new string[] { "dump", m_NoTypeTreeArchivePath, "--stdout" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+            Console.SetError(currentErr);
+        }
+
+        var output = swOut.ToString() + swErr.ToString();
+        Assert.That(output, Does.Contain("has no TypeTrees"), "Expected a clear missing-TypeTrees message");
+        Assert.That(output, Does.Not.Contain("SerializedFileOpenException"), "Should not leak an exception/stack trace");
+    }
+
+    // Dumps the SerializationDemo ScriptableObject from the LeadingEdge AssetBundle build and confirms the
+    // serialized field layout and default values (see UnityProjects/LeadingEdge/Assets/Scripts/SerializationDemo.cs).
+    // Uses substring checks against the pseudo-YAML text output; once JSON output is supported this can parse and
+    // assert more precisely.
+    [Test]
+    public async Task Dump_Stdout_AssetBundle_SerializationDemo_ContainsExpectedFields()
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        try
+        {
+            Console.SetOut(sw);
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_SerializationDemoBundlePath, "--stdout", "--type", "MonoBehaviour" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+        }
+
+        var output = sw.ToString();
+
+        // The MonoBehaviour (ScriptableObject) and its SerializeReference-held data object.
+        Assert.That(output, Does.Contain("(ClassID: 114) MonoBehaviour"));
+        Assert.That(output, Does.Contain("m_Name (string) SerializationDemo"));
+        Assert.That(output, Does.Contain("data (managedReference)"));
+        Assert.That(output, Does.Contain("references (ManagedReferencesRegistry)"));
+        Assert.That(output, Does.Contain("class (string) SerializationDemo/SerializedData"));
+
+        // Scalar fields: name, serialized type and value.
+        Assert.That(output, Does.Contain("longValue (SInt64) -1234567890123456789"));
+        Assert.That(output, Does.Contain("ulongValue (UInt64) 12345678901234567890"));
+        Assert.That(output, Does.Contain("intValue (int) -2000000000"));
+        Assert.That(output, Does.Contain("uintValue (unsigned int) 4000000000"));
+        Assert.That(output, Does.Contain("shortValue (SInt16) -12345"));
+        Assert.That(output, Does.Contain("ushortValue (UInt16) 54321"));
+        Assert.That(output, Does.Contain("signedCharValue (SInt8) -123"));
+        Assert.That(output, Does.Contain("unsignedCharValue (UInt8) 234"));
+        Assert.That(output, Does.Contain("boolValue (UInt8) 1"));
+        Assert.That(output, Does.Contain("floatValue (float) 3.1415927"));
+        Assert.That(output, Does.Contain("doubleValue (double) 2.718281828459045"));
+        Assert.That(output, Does.Contain("charValue (UInt16) 90"));
+        Assert.That(output, Does.Contain("stringValue (string) SerializationDemo string value"));
+
+        // Int array of 512 values (0..511), above the large-array threshold so it is
+        // summarized with a hash by default (CRC32 of the 2048 little-endian bytes).
+        Assert.That(output, Does.Contain("Array<int>[512]"));
+        Assert.That(output, Does.Contain("ArrayDataHash 6feca6e2"));
+        Assert.That(output, Does.Not.Contain("293, 294, 295, 296,"));
+    }
+
+    static async Task<string> DumpToString(params string[] args)
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        try
+        {
+            Console.SetOut(sw);
+            Assert.AreEqual(0, await Program.Main(args));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+        }
+
+        return sw.ToString();
+    }
+
+    // The same asset built by Unity 6.0 and 6.7. From SerializedFile version 25 its
+    // [SerializeReference] registry is a frame in the object's data rather than a TypeTree node, so
+    // the two dumps are the reference for that change: the registry version differs, the instance
+    // it holds does not.
+    [TestCase("PlayerWithTypeTrees", 2)]
+    [TestCase("PlayerWithTypeTreesV26", 3)]
+    public async Task Dump_Stdout_SerializeReference_ReadsRegistryWhicheverVersion(string folder, int expectedRegistryVersion)
+    {
+        var path = Path.Combine(m_TestDataFolder, folder, "sharedassets1.assets");
+
+        var output = await DumpToString("dump", path, "--stdout", "--type", "MonoBehaviour");
+
+        Assert.That(output, Does.Contain("m_Name (string) ScriptableObjectWIthSerializeReference"));
+        Assert.That(output, Does.Contain($"version (int) {expectedRegistryVersion}"));
+        Assert.That(output, Does.Contain("rid(6911265806470873295) ReferencedObject"));
+        Assert.That(output, Does.Contain("class (string) Data"));
+        Assert.That(output, Does.Contain("ns (string) MyNamespace"));
+        Assert.That(output, Does.Contain("Info (string) Some info"));
+        Assert.That(output, Does.Contain("Flag (UInt8) 1"));
+
+        // The field pointing at the instance carries its rid. A reader that does not step over the
+        // registry frame reads the frame header here instead, which is a plausible-looking number
+        // rather than an outright failure.
+        Assert.That(output, Does.Contain("rid (SInt64) 6911265806470873295"));
+    }
+
+    // Unity's own version 26 fixture, which carries the [SerializeReference] shapes the rest of the
+    // test data does not. See TestCommon/Data/AssetBundleTypeTreeVariations/README.md.
+    [Test]
+    public async Task Dump_Stdout_Version26_ReadsEveryRegistryShape()
+    {
+        var path = Path.Combine(m_TestDataFolder, "AssetBundleTypeTreeVariations", "v26", "managedreferences.bundle");
+
+        var output = await DumpToString("dump", path, "--stdout", "--type", "MonoBehaviour");
+
+        // A null reference: a record with no type and no data, which only the version 3 registry
+        // can express.
+        Assert.That(output, Does.Contain("rid(-2) ReferencedObject"));
+        Assert.That(output, Does.Contain("empty (managedReference)"));
+
+        // A PPtr inside a referenced object's data.
+        Assert.That(output, Does.Contain("class (string) ManagedReferenceTestBehaviour/TexturedShape"));
+        Assert.That(output, Does.Contain("material (PPtr<$Material>)"));
+
+        // A reference nested inside another, and a collection of references.
+        Assert.That(output, Does.Contain("class (string) ManagedReferenceTestBehaviour/GroupedShape"));
+        Assert.That(output, Does.Contain("inner (managedReference)"));
+        Assert.That(output, Does.Contain("Array<managedRefArrayItem>[4]"));
+
+        // A [Serializable] class with no fields is a compound of no size, not an unresolvable one.
+        Assert.That(output, Does.Contain("noData (ShapeNoData)"));
+
+        // The plain fields either side of the references. A reader that does not step over the
+        // registry frame reads these shifted rather than failing, so they are the real check.
+        Assert.That(output, Does.Contain("before (int) 11"));
+        Assert.That(output, Does.Contain("after (int) 22"));
+    }
+
+    // Shared subtrees (version 26) replace a repeated compound with a single node that has a byte
+    // size and no children of its own - the shape of a basic type. A reader that takes them at face
+    // value drops the compound's fields silently, so the check is that they are still dumped.
+    [Test]
+    public async Task Dump_Stdout_Version26_ExpandsSharedSubtrees()
+    {
+        var path = Path.Combine(m_TestDataFolder, "PlayerWithTypeTreesV26", "level0");
+
+        var output = await DumpToString("dump", path, "--stdout", "--type", "Transform");
+
+        Assert.That(output, Does.Contain("m_LocalPosition (Vector3f)"));
+        Assert.That(output, Does.Contain("m_GameObject (PPtr<GameObject>)"));
+        Assert.That(output, Does.Contain("m_FileID (int)"));
+        Assert.That(output, Does.Contain("m_PathID (SInt64)"));
+    }
+
+    // The expected bit patterns are the well-known IEEE 754 representations of the
+    // SerializationDemo field values (also verified against python struct.pack).
+    // Runs under a comma-decimal locale to confirm the output is culture-invariant.
+    [Test]
+    public async Task Dump_Stdout_HexFloat_PrintsBitExactRepresentation(
+        [Values("-x", "--hexfloat")] string options)
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        var currentCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            Console.SetOut(sw);
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_SerializationDemoBundlePath, "--stdout", "--type", "MonoBehaviour", options }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+            CultureInfo.CurrentCulture = currentCulture;
+        }
+
+        var output = sw.ToString();
+
+        Assert.That(output, Does.Contain("floatValue (float) 3.1415927(0x40490fdb)"));
+        Assert.That(output, Does.Contain("doubleValue (double) 2.718281828459045(0x4005bf0a8b145769)"));
+    }
+
+    [Test]
+    public async Task Dump_Stdout_ShowLargeArrays_PrintsFullArrayContent()
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        try
+        {
+            Console.SetOut(sw);
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_SerializationDemoBundlePath, "--stdout", "--type", "MonoBehaviour", "--show-large-arrays" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+        }
+
+        var output = sw.ToString();
+
+        // The 512-element int array (0..511) is fully dumped. Check the header and a slice of the sequence.
+        Assert.That(output, Does.Contain("Array<int>[512]"));
+        Assert.That(output, Does.Contain("293, 294, 295, 296,"));
+        Assert.That(output, Does.Not.Contain("ArrayDataHash"));
+    }
+
+    // GUID and Hash128 fields are printed as a single hex string instead of their serialized fields.
+    // The expected values can be verified independently: buildSessionGUID matches the build report
+    // file name, and the Scene1 sourceAssetGUID matches Assets/Scenes/Scene1.unity.meta in the
+    // LeadingEdge project.
+    [Test]
+    public async Task Dump_Stdout_BuildReport_PrintsGuidAndHash128AsHexStrings()
+    {
+        using var sw = new StringWriter();
+        var currentOut = Console.Out;
+        try
+        {
+            Console.SetOut(sw);
+            Assert.AreEqual(0, await Program.Main(new string[] { "dump", m_ContentDirectoryBuildReportPath, "--stdout" }));
+        }
+        finally
+        {
+            Console.SetOut(currentOut);
+        }
+
+        var output = sw.ToString();
+
+        Assert.That(output, Does.Contain("buildSessionGUID (GUID) f096bba0b9ce4c44194edd738d64b9df"));
+        Assert.That(output, Does.Contain("sourceAssetGUID (GUID) 162c015549f8733449ac70ae78ad3aa5"));
+        Assert.That(output, Does.Contain("buildManifestHash (Hash128) e320fc78984f8430afa90a591fd02004"));
+
+        // The individual fields of these compound types are no longer dumped.
+        Assert.That(output, Does.Not.Contain("data[0] (unsigned int)"));
+        Assert.That(output, Does.Not.Contain("bytes[0] (UInt8)"));
+    }
+}

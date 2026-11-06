@@ -1,0 +1,367 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Microsoft.Data.Sqlite;
+using UnityDataTools.Analyzer.SQLite.Commands.ContentLayout;
+using UnityDataTools.Analyzer.Util;
+using UnityDataTools.Models;
+
+namespace UnityDataTools.Analyzer.SQLite.Writers
+{
+    // Populates the content_layout* tables from a ContentLayout.json (see
+    // Documentation/contentlayout.md). The tables mirror the json structure, with two adjustments
+    // that make the data natural to query: the top-level RootAssets list is folded into the
+    // is_root_asset column (holding the 1-based root position), and the json's sentinel values
+    // (-1 for "dropped from build" and for the built-in entry's missing artifact) are stored as
+    // NULL. Version 2 layouts arrive here already upgraded to the current model (see
+    // ContentLayoutV2Upgrader); their extra source data lands in v2-only columns.
+    internal class ContentLayoutSQLWriter : IDisposable
+    {
+        private AddContentLayout m_AddContentLayout = new();
+        private AddContentLayoutSerializedFile m_AddSerializedFile = new();
+        private AddContentLayoutSourceAsset m_AddSourceAsset = new();
+        private AddContentLayoutSerializedFileDependency m_AddSerializedFileDependency = new();
+        private AddContentLayoutLoadableDependency m_AddLoadableDependency = new();
+        private AddContentLayoutLoadableSceneDependency m_AddLoadableSceneDependency = new();
+        private AddContentLayoutLoadableObject m_AddLoadableObject = new();
+        private AddContentLayoutLoadableScene m_AddLoadableScene = new();
+        private AddContentLayoutBinaryArtifact m_AddBinaryArtifact = new();
+        private AddContentLayoutArtifactReference m_AddArtifactReference = new();
+
+        private bool m_Initialized;
+        private SqliteConnection m_Database;
+
+        // Shared with the serialized-file analysis (see AnalyzerTool): file ids must agree
+        // between the layout and the analyzed content, and the dependency map is what resolves
+        // the external references of the analyzed .cf files.
+        private IdProvider<string> m_SerializedFileIdProvider;
+        private ContentFileDependencyMap m_ContentFileDependencies;
+
+        // The layout files that can have a .cf file on disk, kept for LinkSerializedFiles.
+        private List<(int Index, string ContentHash)> m_ImportedFiles = new();
+
+        public ContentLayoutSQLWriter(SqliteConnection database,
+            IdProvider<string> serializedFileIdProvider, ContentFileDependencyMap contentFileDependencies)
+        {
+            m_Database = database;
+            m_SerializedFileIdProvider = serializedFileIdProvider;
+            m_ContentFileDependencies = contentFileDependencies;
+        }
+
+        // Creates the content_layout tables and views. Called lazily on the first import so that
+        // analyzing other content (AssetBundles, Player builds) doesn't create empty tables. The
+        // loadable-objects table and view get extra source columns when importing a v2 layout.
+        public void Init(bool v2LoadableColumns)
+        {
+            if (m_Initialized)
+                return;
+
+            m_Initialized = true;
+
+            m_AddLoadableObject.V2Columns = v2LoadableColumns;
+
+            m_AddContentLayout.CreateCommand(m_Database);
+            m_AddSerializedFile.CreateCommand(m_Database);
+            m_AddSourceAsset.CreateCommand(m_Database);
+            m_AddSerializedFileDependency.CreateCommand(m_Database);
+            m_AddLoadableDependency.CreateCommand(m_Database);
+            m_AddLoadableSceneDependency.CreateCommand(m_Database);
+            m_AddLoadableObject.CreateCommand(m_Database);
+            m_AddLoadableScene.CreateCommand(m_Database);
+            m_AddBinaryArtifact.CreateCommand(m_Database);
+            m_AddArtifactReference.CreateCommand(m_Database);
+
+            ExecuteDDL(Properties.Resources.ContentLayoutViews);
+            // Created separately because it must come after the loadable-objects table exists in
+            // its version-dependent form: the view selects that table's columns as-is.
+            ExecuteDDL(Properties.Resources.ContentLayoutLoadableObjectsView);
+        }
+
+        // v2Data holds the v2-only source fields of each loadable, aligned by index with
+        // layout.LoadableObjectIds; null when a current-version layout is imported.
+        public void WriteContentLayout(string filename, ContentLayout layout, IReadOnlyList<LoadableObjectV2Data> v2Data)
+        {
+            var contentHashByFileIndex = ResolveContentHashes(layout);
+
+            using var transaction = m_Database.BeginTransaction();
+            SetTransaction(transaction);
+
+            try
+            {
+                m_AddContentLayout.SetValue("id", 0);
+                m_AddContentLayout.SetValue("name", filename);
+                m_AddContentLayout.SetValue("version", layout.Version);
+                m_AddContentLayout.SetValue("build_manifest_hash", layout.BuildManifestHash);
+                m_AddContentLayout.ExecuteNonQuery();
+
+                foreach (var file in layout.SerializedFiles)
+                {
+                    m_AddSerializedFile.SetValue("file_index", file.Index);
+                    m_AddSerializedFile.SetValue("stable_id", file.StableId);
+                    m_AddSerializedFile.SetValue("is_builtin", file.IsBuiltIn ? 1 : 0);
+                    m_AddSerializedFile.SetValue("artifact_index",
+                        file.ArtifactIndex < 0 ? null : file.ArtifactIndex);
+                    // Filled in by LinkSerializedFiles when the analyzed input also contains the
+                    // build content.
+                    m_AddSerializedFile.SetValue("serialized_file", null);
+                    m_AddSerializedFile.ExecuteNonQuery();
+
+                    if (contentHashByFileIndex.TryGetValue(file.Index, out var contentHash))
+                    {
+                        m_ImportedFiles.Add((file.Index, contentHash));
+                    }
+
+                    // Empty arrays can be omitted from the json, leaving the fields null.
+                    foreach (var assetPath in file.SourceAssets ?? [])
+                    {
+                        m_AddSourceAsset.SetValue("serialized_file_index", file.Index);
+                        m_AddSourceAsset.SetValue("asset_path", assetPath);
+                        m_AddSourceAsset.ExecuteNonQuery();
+                    }
+
+                    // The array order is significant (a PPtr's m_FileID resolves positionally),
+                    // so it is preserved in the 1-based position column.
+                    var dependencies = file.SerializedFileDependencies ?? [];
+                    for (int i = 0; i < dependencies.Length; ++i)
+                    {
+                        m_AddSerializedFileDependency.SetValue("serialized_file_index", file.Index);
+                        m_AddSerializedFileDependency.SetValue("position", i + 1);
+                        m_AddSerializedFileDependency.SetValue("dependency_index", dependencies[i]);
+                        m_AddSerializedFileDependency.ExecuteNonQuery();
+                    }
+
+                    foreach (var loadableIndex in file.LoadableDependencies ?? [])
+                    {
+                        m_AddLoadableDependency.SetValue("serialized_file_index", file.Index);
+                        m_AddLoadableDependency.SetValue("loadable_index", loadableIndex);
+                        m_AddLoadableDependency.ExecuteNonQuery();
+                    }
+
+                    foreach (var scenePath in file.LoadableSceneDependencies ?? [])
+                    {
+                        m_AddLoadableSceneDependency.SetValue("serialized_file_index", file.Index);
+                        m_AddLoadableSceneDependency.SetValue("scene_path", scenePath);
+                        m_AddLoadableSceneDependency.ExecuteNonQuery();
+                    }
+                }
+
+                // RootAssets order is the build's root input order, recorded as a 1-based position.
+                var rootPositions = new Dictionary<int, int>();
+                var rootAssets = layout.RootAssets ?? [];
+                for (int i = 0; i < rootAssets.Length; ++i)
+                {
+                    rootPositions[rootAssets[i]] = i + 1;
+                }
+
+                var loadables = layout.LoadableObjectIds ?? [];
+                for (int i = 0; i < loadables.Length; ++i)
+                {
+                    var loadable = loadables[i];
+                    m_AddLoadableObject.SetValue("loadable_index", i);
+                    m_AddLoadableObject.SetValue("guid", loadable.GUID);
+                    m_AddLoadableObject.SetValue("lfid", loadable.LFID);
+                    m_AddLoadableObject.SetValue("identifier_type", loadable.IdentifierType);
+                    m_AddLoadableObject.SetValue("serialized_file_index",
+                        loadable.SerializedFile < 0 ? null : loadable.SerializedFile);
+                    m_AddLoadableObject.SetValue("is_root_asset", rootPositions.GetValueOrDefault(i, 0));
+
+                    if (v2Data != null)
+                    {
+                        m_AddLoadableObject.SetValue("asset_path", v2Data[i].AssetPath);
+                        m_AddLoadableObject.SetValue("source_lfid", v2Data[i].SourceLfid);
+                    }
+
+                    m_AddLoadableObject.ExecuteNonQuery();
+                }
+
+                foreach (var scene in layout.LoadableSceneIds ?? [])
+                {
+                    m_AddLoadableScene.SetValue("guid", scene.GUID);
+                    m_AddLoadableScene.SetValue("path", scene.Path);
+                    m_AddLoadableScene.SetValue("serialized_file_index",
+                        scene.SerializedFile < 0 ? null : scene.SerializedFile);
+                    m_AddLoadableScene.ExecuteNonQuery();
+                }
+
+                foreach (var artifact in layout.BinaryArtifacts ?? [])
+                {
+                    m_AddBinaryArtifact.SetValue("artifact_index", artifact.Index);
+                    m_AddBinaryArtifact.SetValue("content_hash", artifact.ContentHash);
+                    m_AddBinaryArtifact.SetValue("category", artifact.Category);
+                    m_AddBinaryArtifact.SetValue("size", artifact.Size);
+                    m_AddBinaryArtifact.ExecuteNonQuery();
+
+                    foreach (var referencedIndex in artifact.ArtifactReferences ?? [])
+                    {
+                        m_AddArtifactReference.SetValue("artifact_index", artifact.Index);
+                        m_AddArtifactReference.SetValue("referenced_artifact_index", referencedIndex);
+                        m_AddArtifactReference.ExecuteNonQuery();
+                    }
+                }
+
+                transaction.Commit();
+            }
+            catch (Exception)
+            {
+                transaction.Rollback();
+                throw;
+            }
+
+            // Indexes are created after the bulk insert so that a very large layout imports fast.
+            ExecuteDDL(Properties.Resources.ContentLayoutIndexes);
+
+            PopulateContentFileDependencies(layout, contentHashByFileIndex);
+        }
+
+        // The content hash of each non-built-in layout file, resolved through its ArtifactIndex.
+        // The hash gives the on-disk filename, which is how the layout entries are matched to the
+        // analyzed files.
+        private static Dictionary<int, string> ResolveContentHashes(ContentLayout layout)
+        {
+            var artifactHashByIndex = (layout.BinaryArtifacts ?? []).ToDictionary(a => a.Index, a => a.ContentHash);
+            var contentHashByFileIndex = new Dictionary<int, string>();
+
+            foreach (var file in layout.SerializedFiles ?? [])
+            {
+                if (file.ArtifactIndex < 0)
+                    continue;
+
+                if (!artifactHashByIndex.TryGetValue(file.ArtifactIndex, out var hash) || string.IsNullOrEmpty(hash))
+                {
+                    throw new InvalidDataException(
+                        $"SerializedFile {file.Index} references BinaryArtifacts[{file.ArtifactIndex}], which does not exist.");
+                }
+
+                contentHashByFileIndex.Add(file.Index, hash);
+            }
+
+            return contentHashByFileIndex;
+        }
+
+        // Fills the shared dependency map that resolves the external references of the analyzed
+        // content files (see ContentFileDependencyMap): for each content file, the dependency
+        // indexes become the target names, in order. Built-in dependencies (no artifact) map to
+        // null so the reference falls back to the external table path. Keys and resolved names use
+        // the normalized content-hash name so they match the analyzed files regardless of whether
+        // those carry the ".cf" extension on disk.
+        private void PopulateContentFileDependencies(ContentLayout layout, Dictionary<int, string> contentHashByFileIndex)
+        {
+            foreach (var file in layout.SerializedFiles ?? [])
+            {
+                if (!contentHashByFileIndex.TryGetValue(file.Index, out var contentHash))
+                    continue;
+
+                var resolved = (file.SerializedFileDependencies ?? [])
+                    .Select(i => contentHashByFileIndex.TryGetValue(i, out var hash)
+                        ? ContentFileDependencyMap.NormalizeFileName(hash)
+                        : null)
+                    .ToArray();
+
+                m_ContentFileDependencies.Add(ContentFileDependencyMap.NormalizeFileName(contentHash), resolved);
+            }
+        }
+
+        // Fills in the serialized_file column, linking each layout entry to its serialized_files
+        // row. Called after all files are processed. Ids come from the shared IdProvider (keyed by
+        // the normalized content hash), so entries whose content file was analyzed link to the row
+        // the analyze pass wrote (loose or inside an archive, with its archive column intact),
+        // regardless of whether that file carried the ".cf" extension on disk. For files never
+        // encountered on the input (a layout-only analyze, or a subset of a build) a placeholder
+        // serialized_files row is written - name only, archive NULL, no objects - so the link is
+        // always valid, mirroring what the dangling-refs finalize does for referenced-but-unanalyzed
+        // files. The placeholder's name uses the canonical "<hash>.cf" form since the file was not
+        // seen on disk.
+        public void LinkSerializedFiles()
+        {
+            var existingIds = new HashSet<int>();
+            using (var select = m_Database.CreateCommand())
+            {
+                select.CommandText = "SELECT id FROM serialized_files";
+                using var reader = select.ExecuteReader();
+                while (reader.Read())
+                {
+                    existingIds.Add(reader.GetInt32(0));
+                }
+            }
+
+            using var transaction = m_Database.BeginTransaction();
+            using var update = m_Database.CreateCommand();
+            update.Transaction = transaction;
+            update.CommandText = "UPDATE content_layout_serialized_files SET serialized_file = @id WHERE file_index = @file_index";
+            update.Parameters.Add("@id", SqliteType.Integer);
+            update.Parameters.Add("@file_index", SqliteType.Integer);
+
+            var addStubRow = new Commands.SerializedFile.AddSerializedFile();
+            addStubRow.CreateCommand(m_Database);
+            addStubRow.SetTransaction(transaction);
+
+            try
+            {
+                foreach (var file in m_ImportedFiles)
+                {
+                    var id = m_SerializedFileIdProvider.GetId(
+                        ContentFileDependencyMap.NormalizeFileName(file.ContentHash));
+
+                    update.Parameters["@id"].Value = id;
+                    update.Parameters["@file_index"].Value = file.Index;
+                    update.ExecuteNonQuery();
+
+                    if (existingIds.Add(id))
+                    {
+                        addStubRow.SetValue("id", id);
+                        addStubRow.SetValue("archive", null);
+                        addStubRow.SetValue("name", file.ContentHash + ".cf");
+                        addStubRow.ExecuteNonQuery();
+                    }
+                }
+
+                transaction.Commit();
+            }
+            catch (Exception)
+            {
+                transaction.Rollback();
+                throw;
+            }
+            finally
+            {
+                addStubRow.Dispose();
+            }
+        }
+
+        private void SetTransaction(SqliteTransaction transaction)
+        {
+            m_AddContentLayout.SetTransaction(transaction);
+            m_AddSerializedFile.SetTransaction(transaction);
+            m_AddSourceAsset.SetTransaction(transaction);
+            m_AddSerializedFileDependency.SetTransaction(transaction);
+            m_AddLoadableDependency.SetTransaction(transaction);
+            m_AddLoadableSceneDependency.SetTransaction(transaction);
+            m_AddLoadableObject.SetTransaction(transaction);
+            m_AddLoadableScene.SetTransaction(transaction);
+            m_AddBinaryArtifact.SetTransaction(transaction);
+            m_AddArtifactReference.SetTransaction(transaction);
+        }
+
+        private void ExecuteDDL(string sql)
+        {
+            using var command = m_Database.CreateCommand();
+            command.CommandText = sql;
+            command.ExecuteNonQuery();
+        }
+
+        public void Dispose()
+        {
+            m_AddContentLayout.Dispose();
+            m_AddSerializedFile.Dispose();
+            m_AddSourceAsset.Dispose();
+            m_AddSerializedFileDependency.Dispose();
+            m_AddLoadableDependency.Dispose();
+            m_AddLoadableSceneDependency.Dispose();
+            m_AddLoadableObject.Dispose();
+            m_AddLoadableScene.Dispose();
+            m_AddBinaryArtifact.Dispose();
+            m_AddArtifactReference.Dispose();
+        }
+    }
+}

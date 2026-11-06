@@ -1,0 +1,340 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using UnityDataTools.BinaryFormat;
+using UnityDataTools.FileSystem;
+
+namespace UnityDataTools.SerializedFile;
+
+public static class SerializedFileTool
+{
+    public enum OutputFormat
+    {
+        Text,
+        Json
+    }
+
+    public static int ListExternalRefs(FileInfo filename, string entry, OutputFormat format)
+    {
+        // External references are read directly from the parsed metadata rather than via UnityFileSystemApi.
+        //
+        // Advantages: works for any modern SerializedFile (version >= 19), including Player builds
+        // that were compiled without TypeTrees — files that UnityFileSystemApi cannot open at all.
+        //
+        // Trade-offs: Files older than version 19 (Unity 2019.1) are not supported by the metadata parser.
+        //
+        // These trade-offs are minor compared to the benefit of handling the common no-TypeTree case,
+        // so there is no need to keep the UnityFileSystemApi code path.
+        using var file = OpenSerializedFile(filename.FullName, entry);
+        if (file == null)
+            return 1;
+
+        if (!SerializedFileDetector.TryParseMetadata(file.Stream, file.Info, out var metadata, out var errorMessage))
+        {
+            Console.Error.WriteLine($"Error: Failed to parse external references for: {file.DisplayName}");
+            Console.Error.WriteLine(errorMessage);
+            return 1;
+        }
+
+        if (metadata.ExternalReferences == null)
+        {
+            Console.Error.WriteLine($"Error: External references could not be parsed for: {file.DisplayName}");
+            return 1;
+        }
+
+        if (format == OutputFormat.Json)
+            OutputExternalRefsJson(metadata.ExternalReferences);
+        else
+            OutputExternalRefsText(metadata.ExternalReferences);
+
+        return 0;
+    }
+
+    public static int ListObjects(FileInfo filename, string entry, OutputFormat format)
+    {
+        // The object list is read directly from the parsed metadata rather than via UnityFileSystemApi.
+        // (See comment in ListExternalRefs() for the reasons for doing it that way)
+        using var file = OpenSerializedFile(filename.FullName, entry);
+        if (file == null)
+            return 1;
+
+        if (!SerializedFileDetector.TryParseMetadata(file.Stream, file.Info, out var metadata, out var errorMessage))
+        {
+            Console.Error.WriteLine($"Error: Failed to parse object list for: {file.DisplayName}");
+            Console.Error.WriteLine(errorMessage);
+            return 1;
+        }
+
+        if (metadata.ObjectList == null)
+        {
+            Console.Error.WriteLine($"Error: Object list could not be parsed for: {file.DisplayName}");
+            return 1;
+        }
+
+        if (format == OutputFormat.Json)
+            OutputObjectListJson(metadata.ObjectList);
+        else
+            OutputObjectListText(metadata.ObjectList);
+
+        return 0;
+    }
+
+    public static int PrintHeader(FileInfo filename, string entry, OutputFormat format)
+    {
+        using var file = OpenSerializedFile(filename.FullName, entry);
+        if (file == null)
+            return 1;
+
+        if (format == OutputFormat.Json)
+            OutputHeaderJson(file.Info);
+        else
+            OutputHeaderText(file.Info);
+
+        return 0;
+    }
+
+    public static int PrintMetadata(FileInfo filename, string entry, OutputFormat format)
+    {
+        using var file = OpenSerializedFile(filename.FullName, entry);
+        if (file == null)
+            return 1;
+
+        if (!SerializedFileDetector.TryParseMetadata(file.Stream, file.Info, out var metadata, out var errorMessage))
+        {
+            Console.Error.WriteLine($"Error: Failed to parse metadata for: {file.DisplayName}");
+            Console.Error.WriteLine(errorMessage);
+            return 1;
+        }
+
+        if (format == OutputFormat.Json)
+            OutputMetadataJson(metadata);
+        else
+            OutputMetadataText(metadata);
+
+        return 0;
+    }
+
+    // A validated SerializedFile open for reading: a file on disk, or an entry of a mounted archive.
+    private sealed class OpenedSerializedFile : IDisposable
+    {
+        public Stream Stream { get; init; }
+        public SerializedFileInfo Info { get; init; }
+        public string DisplayName { get; init; }
+        public MountedSerializedFile MountedFile { get; init; }
+
+        public void Dispose()
+        {
+            // The stream reads through the mount, so close it before unmounting.
+            Stream.Dispose();
+            MountedFile?.Dispose();
+        }
+    }
+
+    // Opens the file as a SerializedFile, or the SerializedFile chosen by entry when the file is an
+    // archive. Prints a helpful error and returns null when that is not possible, except that a failed
+    // selection inside the archive throws SerializedFileSelectionException.
+    private static OpenedSerializedFile OpenSerializedFile(string filePath, string entry)
+    {
+        if (!File.Exists(filePath))
+        {
+            Console.Error.WriteLine($"Error: File not found: {filePath}");
+            return null;
+        }
+
+        Stream stream;
+        string displayName;
+        MountedSerializedFile mountedFile = null;
+
+        if (ArchiveDetector.IsUnityArchive(filePath))
+        {
+            mountedFile = MountedSerializedFile.Open(filePath, entry);
+
+            // The metadata parser reads one small value at a time, and every unbuffered read is a native call.
+            stream = new BufferedStream(new UnityFileStream(mountedFile.MountedPath), 64 * 1024);
+            displayName = $"{mountedFile.PathInArchive} in {filePath}";
+        }
+        else
+        {
+            if (YamlSerializedFileDetector.IsYamlSerializedFile(filePath))
+            {
+                Console.Error.WriteLine($"Error: The file is a YAML-format SerializedFile, which is not supported.");
+                Console.Error.WriteLine($"File: {filePath}");
+                Console.Error.WriteLine();
+                Console.Error.WriteLine("UnityDataTool only supports binary-format SerializedFiles.");
+                return null;
+            }
+
+            stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            displayName = filePath;
+        }
+
+        if (!SerializedFileDetector.TryDetectSerializedFile(stream, out var info))
+        {
+            Console.Error.WriteLine($"Error: The file does not appear to be a valid Unity SerializedFile.");
+            Console.Error.WriteLine($"File: {displayName}");
+            stream.Dispose();
+            mountedFile?.Dispose();
+            return null;
+        }
+
+        return new OpenedSerializedFile { Stream = stream, Info = info, DisplayName = displayName, MountedFile = mountedFile };
+    }
+
+    private static void OutputExternalRefsText(ExternalReference[] refs)
+    {
+        for (int i = 0; i < refs.Length; i++)
+        {
+            var extRef = refs[i];
+            var displayValue = !string.IsNullOrEmpty(extRef.Path) ? extRef.Path : extRef.Guid;
+            Console.WriteLine($"Index: {i + 1}, Path: {displayValue}");
+        }
+    }
+
+    private static void OutputExternalRefsJson(ExternalReference[] refs)
+    {
+        var jsonArray = new object[refs.Length];
+
+        for (int i = 0; i < refs.Length; i++)
+        {
+            var extRef = refs[i];
+            jsonArray[i] = new
+            {
+                index = i + 1,
+                path = extRef.Path,
+                guid = extRef.Guid,
+                type = extRef.Type.ToString()
+            };
+        }
+
+        var json = JsonSerializer.Serialize(jsonArray, new JsonSerializerOptions { WriteIndented = true });
+        Console.WriteLine(json);
+    }
+
+    private static void OutputObjectListText(ObjectInfo[] objects)
+    {
+        Console.WriteLine($"{"Id",-20} {"Type",-40} {"Offset",-15} {"Size",-15}");
+        Console.WriteLine(new string('-', 90));
+
+        foreach (var obj in objects)
+            Console.WriteLine($"{obj.Id,-20} {TypeIdRegistry.GetTypeName(obj.TypeId),-40} {obj.Offset,-15} {obj.Size,-15}");
+    }
+
+    private static void OutputObjectListJson(ObjectInfo[] objects)
+    {
+        var jsonArray = new object[objects.Length];
+
+        for (int i = 0; i < objects.Length; i++)
+        {
+            var obj = objects[i];
+            jsonArray[i] = new
+            {
+                id = obj.Id,
+                typeId = obj.TypeId,
+                typeName = TypeIdRegistry.GetTypeName(obj.TypeId),
+                offset = obj.Offset,
+                size = obj.Size
+            };
+        }
+
+        var json = JsonSerializer.Serialize(jsonArray, new JsonSerializerOptions { WriteIndented = true });
+        Console.WriteLine(json);
+    }
+
+    private static void OutputHeaderText(SerializedFileInfo info)
+    {
+        Console.WriteLine($"{"Version",-20} {info.Version}");
+        Console.WriteLine($"{"Format",-20} {(info.IsLegacyFormat ? "Legacy (32-bit)" : "Modern (64-bit)")}");
+        Console.WriteLine($"{"File Size",-20} {info.FileSize:N0} bytes");
+        Console.WriteLine($"{"Metadata Size",-20} {info.MetadataSize:N0} bytes");
+        Console.WriteLine($"{"Data Offset",-20} {info.DataOffset:N0}");
+        Console.WriteLine($"{"Endianness",-20} {(info.Endianness == 0 ? "Little Endian" : "Big Endian")}");
+    }
+
+    private static void OutputHeaderJson(SerializedFileInfo info)
+    {
+        var jsonObject = new
+        {
+            version = info.Version,
+            format = info.IsLegacyFormat ? "Legacy (32-bit)" : "Modern (64-bit)",
+            fileSize = info.FileSize,
+            metadataSize = info.MetadataSize,
+            dataOffset = info.DataOffset,
+            endianness = info.Endianness == 0 ? "Little Endian" : "Big Endian"
+        };
+
+        var json = JsonSerializer.Serialize(jsonObject, new JsonSerializerOptions { WriteIndented = true });
+        Console.WriteLine(json);
+    }
+
+    private static void OutputMetadataText(SerializedFileMetadata metadata)
+    {
+        string typeTreeDefinitions;
+        if (!metadata.EnableTypeTree)
+            typeTreeDefinitions = "No";
+        else if (metadata.TypeTrees == null || metadata.TypeTrees.Length == 0)
+            typeTreeDefinitions = "Unknown";
+        else if (metadata.TypeTrees.All(t => t.InlineTypeTree))
+            typeTreeDefinitions = "Inline";
+        else if (metadata.TypeTrees.Any(t => t.InlineTypeTree))
+            typeTreeDefinitions = "Mixed";  // unexpected: entries disagree on inline vs external
+        else
+            typeTreeDefinitions = "External";
+
+        Console.WriteLine($"{"Unity Version",-20} {metadata.UnityVersion}");
+        Console.WriteLine($"{"Target Platform",-20} {metadata.TargetPlatform}");
+        Console.WriteLine($"{"TypeTree Definitions",-20} {typeTreeDefinitions}");
+        Console.WriteLine($"{"TypeTree Count",-20} {metadata.TypeTreeCount}");
+        Console.WriteLine($"{"RefType Count",-20} {metadata.SerializedReferenceTypeTreeCount}");
+
+        // Only files from Unity 6.7 and later have a shared subtree table, so stay quiet about it
+        // for the older files that make up most of what this command is pointed at.
+        if (metadata.SharedSubtreeCount > 0)
+            Console.WriteLine($"{"Shared Subtrees",-20} {metadata.SharedSubtreeCount}");
+    }
+
+    private static void OutputMetadataJson(SerializedFileMetadata metadata)
+    {
+        var jsonObject = new
+        {
+            unityVersion = metadata.UnityVersion,
+            targetPlatform = metadata.TargetPlatform,
+            enableTypeTree = metadata.EnableTypeTree,
+            typeTreeCount = metadata.TypeTreeCount,
+            serializedReferenceTypeTreeCount = metadata.SerializedReferenceTypeTreeCount,
+            typeTrees = metadata.TypeTrees?.Select(TypeTreeInfoToJson).ToArray(),
+            serializedReferenceTypeTrees = metadata.SerializedReferenceTypeTrees?.Select(TypeTreeInfoToJson).ToArray(),
+            scriptTypes = metadata.ScriptTypes?.Select(s => new { fileID = s.FileID, pathID = s.PathID }).ToArray(),
+            sharedSubtreeCount = metadata.SharedSubtreeCount,
+            sharedSubtrees = metadata.SharedSubtrees?.Select(t => new
+            {
+                contentHash = t.ContentHash.ToString(),
+                serializedSize = t.SerializedSize,
+                inline = t.Inline,
+            }).ToArray(),
+        };
+
+        var json = JsonSerializer.Serialize(jsonObject, new JsonSerializerOptions { WriteIndented = true });
+        Console.WriteLine(json);
+    }
+
+    private static object TypeTreeInfoToJson(BinaryFormat.TypeTreeInfo info)
+    {
+        return new
+        {
+            persistentTypeID = info.PersistentTypeID,
+            isStrippedType = info.IsStrippedType,
+            scriptTypeIndex = info.ScriptTypeIndex,
+            scriptID = info.ScriptID.ToString(),
+            typeTreeStructureHash = info.TypeTreeStructureHash.ToString(),
+            typeTreeContentHash = info.TypeTreeContentHash.ToString(),
+            typeTreeSerializedSize = info.TypeTreeSerializedSize,
+            typeTreeFormatVersion = info.TypeTreeFormatVersion,
+            inlineTypeTree = info.InlineTypeTree,
+            className = info.ClassName,
+            namespaceName = info.Namespace,
+            assemblyName = info.AssemblyName,
+            typeDependencies = info.TypeDependencies,
+        };
+    }
+}

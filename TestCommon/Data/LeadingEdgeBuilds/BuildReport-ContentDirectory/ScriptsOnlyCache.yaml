@@ -1,0 +1,23 @@
+ScriptsOnlyBuild:
+  usedScripts:
+    Assembly-CSharp.dll:
+    - DirectScriptableObjectReference
+    - LoadableAudioClipReference
+    - SceneList
+    - SerializationDemo
+  serializedClasses:
+    Assembly-CSharp:
+    - SerializationDemo/SerializedData
+    UnityEngine.ContentLoadModule:
+    - Unity.Loading.Loadable`1
+    UnityEngine.CoreModule:
+    - Unity.Loading.LoadableObjectId
+    - Unity.Loading.LoadableSceneId
+    - UnityEngine.DictionarySerialization/SerializedKeyValue`2
+  methodsToPreserve: []
+  sceneClasses: {}
+  scriptHashData: []
+  platform: 19
+  scenePathNames: []
+  nativeClasses: 00000000300000001200000082000000150000001c0000001b00000059000000020000007200000008000000730000003100000001000000040000000900000003000000680000009d000000c400000019000000d4000000530000007de237150f010000d5000000i
+  playerPath: 

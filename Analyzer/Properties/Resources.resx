@@ -1,0 +1,280 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- 
+    Microsoft ResX Schema 
+    
+    Version 2.0
+    
+    The primary goals of this format is to allow a simple XML format 
+    that is mostly human readable. The generation and parsing of the 
+    various data types are done through the TypeConverter classes 
+    associated with the data types.
+    
+    Example:
+    
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+                
+    There are any number of "resheader" rows that contain simple 
+    name/value pairs.
+    
+    Each data row contains a name, and value. The row also contains a 
+    type or mimetype. Type corresponds to a .NET class that support 
+    text/value conversion through the TypeConverter architecture. 
+    Classes that don't support this are serialized and stored with the 
+    mimetype set.
+    
+    The mimetype is used for serialized objects, and tells the 
+    ResXResourceReader how to depersist the object. This is currently not 
+    extensible. For a given mimetype the value must be set accordingly:
+    
+    Note - application/x-microsoft.net.object.binary.base64 is the format 
+    that the ResXResourceWriter will generate, however the reader can 
+    read any of the formats listed below.
+    
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+    
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array 
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="AnimationClip" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AnimationClip.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AssetBundle" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AssetBundle.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AudioClip" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AudioClip.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="BuildReport" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\BuildReport.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="Finalize" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\Finalize.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="Init" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\Init.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="Mesh" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\Mesh.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="Shader" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\Shader.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="Texture2D" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\Texture2D.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuilds" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuilds.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildBundles" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildBundles.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildBundleDependentBundles" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildBundleDependentBundles.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildBundleDependencies" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildBundleDependencies.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildBundleExpandedDependencies" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildBundleExpandedDependencies.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildBundleFiles" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildBundleFiles.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildBundleRegularDependencies" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildBundleRegularDependencies.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildDataFromOtherAssets" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildDataFromOtherAssets.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildDataFromOtherAssetObjects" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildDataFromOtherAssetObjects.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildDataFromOtherAssetObjectReferences" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildDataFromOtherAssetObjectReferences.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildDataFromOtherAssetReferencingAssets" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildDataFromOtherAssetReferencingAssets.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildExplicitAssets" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildExplicitAssets.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildExplicitAssetExternallyReferencedAssets" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildExplicitAssetExternallyReferencedAssets.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildExplicitAssetInternalReferencedExplicitAssets" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildExplicitAssetInternalReferencedExplicitAssets.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildExplicitAssetInternalReferencedOtherAssets" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildExplicitAssetInternalReferencedOtherAssets.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildExplicitAssetLabels" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildExplicitAssetLabels.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildFiles" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildFiles.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildFileAssets" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildFileAssets.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildFileOtherAssets" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildFileOtherAssets.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildFileSubFiles" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildFileSubFiles.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildFileExternalReferences" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildFileExternalReferences.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildGroupBundles" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildGroupBundles.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildGroups" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildGroups.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildGroupSchemas" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildGroupSchemas.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildSchemas" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildSchemas.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildSubFiles" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildSubFiles.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="AddrBuildSchemaDataPairs" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\AddrBuildSchemaDataPairs.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayout" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayout.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutSerializedFiles" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutSerializedFiles.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutSourceAssets" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutSourceAssets.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutSerializedFileDependencies" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutSerializedFileDependencies.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutLoadableDependencies" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutLoadableDependencies.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutLoadableSceneDependencies" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutLoadableSceneDependencies.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutLoadableObjects" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutLoadableObjects.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutLoadableObjectsV2" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutLoadableObjectsV2.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutLoadableObjectsView" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutLoadableObjectsView.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutLoadableScenes" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutLoadableScenes.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutBinaryArtifacts" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutBinaryArtifacts.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutArtifactReferences" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutArtifactReferences.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutViews" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutViews.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentLayoutIndexes" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentLayoutIndexes.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="MonoScript" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\MonoScript.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="PackedAssets" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\PackedAssets.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+  <data name="ContentSummary" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\ContentSummary.sql;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;utf-8</value>
+  </data>
+</root>

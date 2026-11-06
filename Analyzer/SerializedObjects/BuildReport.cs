@@ -1,0 +1,289 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using UnityDataTools.BinaryFormat;
+using UnityDataTools.FileSystem.TypeTreeReaders;
+
+namespace UnityDataTools.Analyzer.SerializedObjects;
+
+public class BuildReport
+{
+    public string Name { get; init; }
+    public string BuildGuid { get; init; }
+    public string PlatformName { get; init; }
+    public int Subtarget { get; init; }
+    public string StartTime { get; init; }
+    public string EndTime { get; init; }
+    public int Options { get; init; }
+    public int AssetBundleOptions { get; init; }
+    public string OutputPath { get; init; }
+    public uint Crc { get; init; }
+    public ulong TotalSize { get; init; }
+    public int TotalTimeSeconds { get; init; }
+    public int TotalErrors { get; init; }
+    public int TotalWarnings { get; init; }
+    public int BuildType { get; init; }
+    public string BuildResult { get; init; }
+    // Fields added in Unity 6.6; null when analyzing reports from older versions.
+    public string BuildName { get; init; }
+    public int? BuildContentOptions { get; init; }
+    public string BuildSessionGuid { get; init; }
+    public string BuildManifestHash { get; init; }
+    public string BuildProfilePath { get; init; }
+    public string BuildProfileGuid { get; init; }
+    public string DataPath { get; init; }
+    public List<BuildFile> Files { get; init; }
+    public FileListArchiveHelper fileListArchiveHelper { get; init; }
+
+    private BuildReport() { }
+
+    public static BuildReport Read(RandomAccessReader reader)
+    {
+        var summary = reader["m_Summary"];
+
+        // Read the GUID (4 unsigned ints)
+        // Unity's GUID format reverses nibbles within each uint32
+        var guidData = summary["buildGUID"];
+        var guid0 = guidData["data[0]"].GetValue<uint>();
+        var guid1 = guidData["data[1]"].GetValue<uint>();
+        var guid2 = guidData["data[2]"].GetValue<uint>();
+        var guid3 = guidData["data[3]"].GetValue<uint>();
+        var guidString = GuidHelper.FormatUnityGuid(guid0, guid1, guid2, guid3);
+
+        // Convert build start time from ticks to ISO 8601 UTC format
+        var startTimeTicks = summary["buildStartTime"]["ticks"].GetValue<long>();
+        var startTime = new DateTime(startTimeTicks, DateTimeKind.Utc).ToString("o");
+
+        // Convert ticks to seconds (TimeSpan.TicksPerSecond = 10,000,000)
+        var totalTimeTicks = summary["totalTimeTicks"].GetValue<ulong>();
+        var totalTimeSeconds = (int)Math.Round(totalTimeTicks / 10000000.0);
+
+        var endTime = new DateTime(startTimeTicks + (long)totalTimeTicks, DateTimeKind.Utc).ToString("o");
+
+        // Read the files array
+        var filesList = new List<BuildFile>(reader["m_Files"].GetArraySize());
+        foreach (var fileElement in reader["m_Files"])
+        {
+            filesList.Add(new BuildFile
+            {
+                Id = fileElement["id"].GetValue<uint>(),
+                Path = fileElement["path"].GetValue<string>(),
+                Role = fileElement["role"].GetValue<string>(),
+                Size = fileElement["totalSize"].GetValue<ulong>()
+            });
+        }
+
+        TrimCommonPathPrefix(filesList);
+
+        return new BuildReport()
+        {
+            BuildName = summary.HasChild("buildName") ? summary["buildName"].GetValue<string>() : null,
+            BuildContentOptions = summary.HasChild("buildContentOptions") ? summary["buildContentOptions"].GetValue<int>() : null,
+            BuildSessionGuid = ReadOptionalGuid(summary, "buildSessionGUID"),
+            BuildManifestHash = ReadOptionalHash128(summary, "buildManifestHash"),
+            BuildProfilePath = summary.HasChild("buildProfilePath") ? summary["buildProfilePath"].GetValue<string>() : null,
+            BuildProfileGuid = ReadOptionalGuid(summary, "buildProfileGuid"),
+            DataPath = summary.HasChild("dataPath") ? summary["dataPath"].GetValue<string>() : null,
+            Name = reader["m_Name"].GetValue<string>(),
+            BuildGuid = guidString,
+            PlatformName = summary["platformName"].GetValue<string>(),
+            Subtarget = summary["subtarget"].GetValue<int>(),
+            StartTime = startTime,
+            EndTime = endTime,
+            Options = summary["options"].GetValue<int>(),
+            AssetBundleOptions = summary["assetBundleOptions"].GetValue<int>(),
+            OutputPath = summary["outputPath"].GetValue<string>(),
+            Crc = summary["crc"].GetValue<uint>(),
+            TotalSize = summary["totalSize"].GetValue<ulong>(),
+            TotalTimeSeconds = totalTimeSeconds,
+            TotalErrors = summary["totalErrors"].GetValue<int>(),
+            TotalWarnings = summary["totalWarnings"].GetValue<int>(),
+            BuildType = summary["buildType"].GetValue<int>(),
+            BuildResult = GetBuildResultString(summary["buildResult"].GetValue<int>()),
+            Files = filesList,
+            fileListArchiveHelper = new FileListArchiveHelper(filesList)
+        };
+    }
+
+    // Currently the file list has the absolute paths of the build output, but what we really want is the relative path.
+    // This code reuses the approach taken in the build report inspector of automatically stripping off whatever part of the path
+    // is repeated as the prefix on each file, which effectively finds the relative output path.
+    static void TrimCommonPathPrefix(List<BuildFile> files)
+    {
+        if (files.Count == 0)
+            return;
+        string longestCommonRoot = files[0].Path;
+        foreach (var file in files)
+        {
+            for (var i = 0; i < longestCommonRoot.Length && i < file.Path.Length; i++)
+            {
+                if (longestCommonRoot[i] == file.Path[i])
+                    continue;
+                longestCommonRoot = longestCommonRoot.Substring(0, i);
+            }
+        }
+
+        foreach (var file in files)
+        {
+            file.Path = file.Path.Substring(longestCommonRoot.Length);
+        }
+    }
+
+    // Reads a Unity GUID (4 uints) if present, returning null when the field is absent (older
+    // Unity) or a default all-zero GUID (e.g. no build profile was active).
+    static string ReadOptionalGuid(RandomAccessReader summary, string fieldName)
+    {
+        if (!summary.HasChild(fieldName))
+            return null;
+
+        var guidData = summary[fieldName];
+        var guid0 = guidData["data[0]"].GetValue<uint>();
+        var guid1 = guidData["data[1]"].GetValue<uint>();
+        var guid2 = guidData["data[2]"].GetValue<uint>();
+        var guid3 = guidData["data[3]"].GetValue<uint>();
+
+        if ((guid0 | guid1 | guid2 | guid3) == 0)
+            return null;
+
+        return GuidHelper.FormatUnityGuid(guid0, guid1, guid2, guid3);
+    }
+
+    // Reads a Unity Hash128 (16 bytes) if present, returning null when the field is absent (older
+    // Unity) or an all-zero hash (e.g. non-ContentDirectory builds have no manifest hash).
+    static string ReadOptionalHash128(RandomAccessReader summary, string fieldName)
+    {
+        if (!summary.HasChild(fieldName))
+            return null;
+
+        var hashData = summary[fieldName];
+        var bytes = new byte[16];
+        var allZero = true;
+        for (var i = 0; i < 16; i++)
+        {
+            bytes[i] = hashData[$"bytes[{i}]"].GetValue<byte>();
+            if (bytes[i] != 0)
+                allZero = false;
+        }
+
+        return allZero ? null : GuidHelper.FormatUnityHash128(bytes);
+    }
+
+    public static string GetBuildTypeString(int buildType)
+    {
+        return buildType switch
+        {
+            1 => "Player",
+            2 => "AssetBundle",
+            3 => "ContentDirectory",
+            _ => buildType.ToString()
+        };
+    }
+
+    public static string GetBuildResultString(int buildResult)
+    {
+        return buildResult switch
+        {
+            0 => "Unknown",
+            1 => "Succeeded",
+            2 => "Failed",
+            3 => "Cancelled",
+            4 => "Pending",
+            _ => buildResult.ToString()
+        };
+    }
+}
+
+public class BuildFile
+{
+    public uint Id { get; init; }
+    public string Path { get; set; }
+    public string Role { get; init; }
+    public ulong Size { get; init; }
+}
+
+
+/// Helper for matching files that are inside an Unity Archive file to the file containing it.
+// This applies to AssetBundle builds and ContentDirectory builds (ContentArchive), which can have
+// many output files and which use hard to understand internal file names
+// like "CAB-76a378bdc9304bd3c3a82de8dd97981a".
+// For compressed Player builds the PackedAssets reports the internal files, but the file list does not report the unity3d content,
+// so this code will not pick up the mapping.  However because there is only a single unity3d file on most platforms this is less important
+public class FileListArchiveHelper
+{
+    public Dictionary<string, string> internalNameToArchiveMapping = new Dictionary<string, string>();
+
+    public FileListArchiveHelper(List<BuildFile> files)
+    {
+        CalculateArchiveMapping(files);
+    }
+
+    /// <summary>
+    // Map between the internal file names inside Archive files back to the Archive filename.
+
+    /*
+    Example input:
+
+    - path: C:/Src/TestProject/Build/AssetBundles/audio.bundle/CAB-76a378bdc9304bd3c3a82de8dd97981a.resource
+      role: StreamingResourceFile
+    ...
+    - path: C:/Src/TestProject/Build/AssetBundles/audio.bundle
+      role: AssetBundle
+    ...
+
+    Result:
+    CAB-76a378bdc9304bd3c3a82de8dd97981a.resource -> audio.bundle
+
+
+    Similarly for Archives in a content directory build:
+    Array<BuildReportFile>[20]
+...
+      data[1] (BuildReportFile)
+        path (string) content0.archive
+        role (string) ContentArchive
+        id (unsigned int) 1
+        totalSize (UInt64) 441200
+        flags (int) 0
+      data[2] (BuildReportFile)
+        path (string) content0.archive/1b5ddb63f662928d24e43d5d9b8b9597.cf
+        role (string) ContentFile
+        id (unsigned int) 2
+        totalSize (UInt64) 100748
+        flags (int) 0
+    ...
+
+    Result:
+    1b5ddb63f662928d24e43d5d9b8b9597.cf -> content0.archive
+    */
+    /// </summary>
+    private void CalculateArchiveMapping(List<BuildFile> files)
+    {
+        internalNameToArchiveMapping.Clear();
+
+        // Track archive paths and their base filenames for AssetBundle, manifest or content archive files
+        var archivePathToFileName = new Dictionary<string, string>();
+        foreach (var file in files)
+        {
+            if (file.Role == "AssetBundle" || file.Role == "ManifestAssetBundle" || file.Role == "ContentArchive")
+            {
+                var justFileName = Path.GetFileName(file.Path);
+                archivePathToFileName[file.Path] = justFileName;
+            }
+        }
+
+        if (archivePathToFileName.Count == 0)
+            return;
+
+        // Map internal file names to their corresponding archive filenames
+        foreach (var file in files)
+        {
+            // Assumes internal files are not in subdirectories inside the archive
+            var justPath = Path.GetDirectoryName(file.Path)?.Replace('\\', '/');
+            var justFileName = Path.GetFileName(file.Path);
+
+            if (!string.IsNullOrEmpty(justPath) && archivePathToFileName.ContainsKey(justPath))
+            {
+                internalNameToArchiveMapping[justFileName] = archivePathToFileName[justPath];
+            }
+        }
+    }
+}
